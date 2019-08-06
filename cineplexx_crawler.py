@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 import datetime
 import csv
 import datetime
+import re
+
 
 def main():
     crawl_main_page()
@@ -63,10 +65,10 @@ def crawl_view(url):
         date = daily_screenings.find('time').text
         print(str(date))
         for screening in daily_screenings.findAll('a'):
-            starting_time = screening.find('p', {'class': 'time-desc'})
+            starting_time = screening.find('p', {'class': 'time-desc'}).text.strip()
             screening_url = screening['data-link']
-            screening_mode = screening.find('p', {'class': 'mode-desc'})
-            screening_hall = screening.find('p', {'class': 'room-desc'})
+            screening_mode = screening.find('p', {'class': 'mode-desc'}).text.strip()
+            screening_hall = screening.find('p', {'class': 'room-desc'}).text
 
             print(starting_time)
             print(screening_url)
@@ -80,13 +82,18 @@ def crawl_view(url):
                https://www.cineplexx.gr/tickets/#/center/670/movie/160174/date/2019-05-11/program/5499/select
                in this example the first_code is 670 and the second_code is 5499
             '''
-            start = screening_url.find('/center/')
-            end = screening_url.find('/movie/')
-            first_code = screening_url[start+len('/center/'):end]
+            # old approach
+            # start = screening_url.find('/center/')
+            # end = screening_url.find('/movie/')
+            # first_code = screening_url[start+len('/center/'):end]
+            # new approach
+            first_code = re.search('/center/(.+?)/movie/', screening_url).group(1)
 
-            start = screening_url.find('/program/')
-            end = screening_url.find('/select')
-            second_code = screening_url[start+len('/program/'):end]
+            # start = screening_url.find('/program/')
+            # end = screening_url.find('/select')
+            # second_code = screening_url[start+len('/program/'):end]
+            second_code = re.search('/program/(.+?)/select', screening_url).group(1)
+
 
             seating_arr_url = 'https://www.cineplexx.gr/restV/cinemas/' + first_code + '/program/' + second_code + '/seat-selection-view/?sessionid=f'
 
