@@ -1,11 +1,15 @@
 import requests
 from bs4 import BeautifulSoup
+import csv
 import time
+import pickle
+import os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 
 
 def main():
@@ -14,9 +18,16 @@ def main():
     # crawl_main_page(main_page_url)
 
     main_page_url = 'https://www.villagecinemas.gr/WebTicketing/'
-    screenings_data = get_scan_of_screening_schedules(main_page_url)
+    if os.path.isdir('village_cinemas_csvs/dataset.txt'):
+        with open('village_cinemas_csvs/dataset.txt', "rb") as fp:  # Unpickling
+            screenings_data = pickle.load(fp)
+    else:
+        screenings_data = get_scan_of_screening_schedules(main_page_url)
+        with open('village_cinemas_csvs/dataset.txt', "wb") as fp:  # Pickling
+            pickle.dump(screenings_data, fp)
 
-    get_seats_per_screening(screenings_data)
+    data_list = get_seats_per_screening(main_page_url, screenings_data)
+
 
 # method that crawls the main page of village cinemas for every movie's title and url
 def crawl_main_page(url):
@@ -91,7 +102,7 @@ def get_movie_ids_list(main_page_url):
     return movies_ids_list
 
 
-def get_cinemas_list(main_page_url):
+def get_cinemas_ids_list(main_page_url):
 
     r = requests.get(main_page_url)
     url = r.content
@@ -109,21 +120,37 @@ def get_cinemas_list(main_page_url):
 def get_scan_of_screening_schedules(main_page_url):
 
     movies_ids_list = get_movie_ids_list(main_page_url)
-    cinemas_ids_list = get_cinemas_list(main_page_url)
+    cinemas_ids_list = get_cinemas_ids_list(main_page_url)
     screenings_data = []
 
     r = requests.post(main_page_url)
     main_page_cookies = r.cookies
 
     for movie_id in movies_ids_list:
+        page_url = 'https://www.villagecinemas.gr/WebTicketing/?MovieCode=' + movie_id
+        r = requests.post(page_url)
+        url = r.content
+        soup = BeautifulSoup(url, 'html.parser')
+
+        # extract the movie title
+        movie_title_container = soup.find(attrs={"data-vc-movie": movie_id})
+        movie_title = movie_title_container.findAll('h5')[-1].text
+        print(movie_title)
+
         for cinema_id in cinemas_ids_list:
-
+            print('cinema_id:' + cinema_id + '   movie_id:' + movie_id)
+            # cinema_id = '21'
+            # movie_id = 'HO00105127'
             page_url = 'https://www.villagecinemas.gr/WebTicketing/?CinemaCode='+cinema_id+'&MovieCode='+movie_id
-
             # r = requests.get(page_url)
-            r = requests.post(page_url, cookies=main_page_cookies)
+            r = requests.post(page_url)
             url = r.content
             soup = BeautifulSoup(url, 'html.parser')
+
+            # extract the cinema_name
+            cinema_name_container = soup.find(attrs={"data-vc-cinema" : cinema_id})
+            cinema_name = cinema_name_container.find('span').text
+            print(cinema_name)
 
             # this container will always have data, even if there are no dates available for the specific movie-cinema_
             # hall combination
@@ -153,7 +180,7 @@ def get_scan_of_screening_schedules(main_page_url):
                         ticket_selection_url = 'https://www.villagecinemas.gr/WebTicketing/TicketsSelection?CinemaCode='+cinema_id+'&SessionId='+time_id+'&RenewSession=True'
                         screening_info_list.append({'time_id': time_id, 'screening_hall': screening_hall, 'starting_time': starting_time, 'ticket_selection_url': ticket_selection_url})
                     dates_dict[date_id] = screening_info_list
-                screenings_data.append({'movie_id': movie_id, 'cinema_id': cinema_id, 'dates': dates_dict.copy()})
+                screenings_data.append({'movie_id': movie_id, 'movie_title': movie_title, 'cinema_id': cinema_id, 'cinema_name': cinema_name, 'dates': dates_dict.copy()})
             else:
                 print('Nope) cinema_id:'+cinema_id+'   movie_id:'+movie_id+'  ->   '+page_url)
 
@@ -178,42 +205,51 @@ def get_seats_html_with_selenium_crawler(main_page_url, movie_id, cinema_id, day
             EC.presence_of_element_located((By.XPATH, "//div[@data-vc-movie='"+movie_id+"']"))
         )
         movie_element.click()
+        print('click on movie done')
 
         # click on the cinema hall
         cinema_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//a[@data-vc-cinema='"+cinema_id+"']"))
         )
         cinema_element.click()
+        print('click on cinema done')
 
         # click on the date
         day_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//a[@data-vc-selecteddate='"+day_id+"']"))
         )
         day_element.click()
+        print('click on day done')
 
         # click on time
         time_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//a[@id='"+time_id+"']"))
         )
-        time_element.click()
+        actionChains = ActionChains(driver)
+        actionChains.double_click(time_element).perform()
+        print('double click on time done')
 
         # increase the ticket counter by one
         increase_ticket_count_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[@class='inc button']"))
+            EC.presence_of_element_located(
+                (By.XPATH, "//div/input[@data-vc-ticketname='Eticket ' or @data-vc-ticketname='Special events Eticket']/../div[@class='inc button']"))
         )
         increase_ticket_count_element.click()
+        print('click on ticket counter done')
 
         # click to submit the form
         submit_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//button[@type='submit']"))
         )
         submit_element.click()
+        print('click on submit done')
 
         # wait until this element is loaded, so that you can obtain the html script that contains the
         # seating arrangement
         seat_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//div[@class='choose-seat-block']"))
         )
+        print('waiting on seat element to load done')
 
         html = driver.page_source
 
@@ -226,17 +262,64 @@ def get_seats_html_with_selenium_crawler(main_page_url, movie_id, cinema_id, day
     return result
 
 
+# gets the html of the seating arrangements page and returns the number of available and reserved seats
+def get_available_and_reserved_seats(html_soup):
+
+    # container with the available seats
+    available_seats_container = html_soup.findAll('form', {'class': 'seats seat-available'})
+    # container with the reserved seats
+    reserved_seats_container = html_soup.findAll('form', {'class': 'seats seat-not-available'})
+
+    # i increment the number of available seats by one to include the seat that is selected for me and belows to the
+    # 'seats seat-choiced' class
+    return len(available_seats_container)+1, len(reserved_seats_container)
+
+
+
 def get_seats_per_screening(main_page_url, screenings_data):
+    data_list = []
     screenings_counter = 0
     for i in screenings_data:
         movie_id = i['movie_id']
         cinema_id = i['cinema_id']
+        cinema_name = i['cinema_name']
+        movie_title = i['movie_title']
         dates = i['dates']
         for day_id, l in dates.items():
             for specific_screening_info in l:
                 screenings_counter += 1
                 time_id = specific_screening_info['time_id']
-                print(str(screenings_counter)+'Crawling for -> movie_id:' + movie_id + ' / ' + 'cinema_id:' + cinema_id + ' / ' + 'date_id:' + day_id + ' / ' + 'time_id:' + time_id)
-                # use the selenium crawler to get the html for the seating arrangements
-                html_soup = get_seats_html_with_selenium_crawler(main_page_url, movie_id, cinema_id, day_id, time_id,
-                                                     window_mode='silent')
+                print(str(screenings_counter)+') Crawling for -> movie_id:' + movie_id + ' / ' + 'cinema_id:' + cinema_id + ' / ' + 'date_id:' + day_id + ' / ' + 'time_id:' + time_id)
+                start_time = time.time()
+                seats_found = False
+                while not seats_found:
+                    # use the selenium crawler to get the html for the seating arrangements
+                    html_soup = get_seats_html_with_selenium_crawler(main_page_url, movie_id, cinema_id, day_id, time_id,
+                                                         window_mode='visible')
+                    print('completed in '+str(time.time() - start_time)+' secs')
+                    if html_soup is None:
+                        print('Something went wrong!!!!!!!!!!!')
+                        print('Trying again !!!!!!!!!!!!!!!')
+                    else:
+                        seats_found = True
+
+                # get the number of available and reserved seats for the specific screening
+                num_available, num_reserved = get_available_and_reserved_seats(html_soup)
+                d = {'date': day_id, 'starting_time': specific_screening_info['starting_time'], 'cinema_name': cinema_name,
+                     'screening_hall': specific_screening_info['screening_hall'],
+                     'movie_title': movie_title, 'free': num_available, 'sold': num_reserved}
+                data_list.append(d)
+
+    dict_to_csv(data_list, 'village_cinemas_csvs/dataset.csv')
+
+    return data_list
+
+
+def dict_to_csv(list_of_dicts, filename):
+    keys = list_of_dicts[0].keys()
+
+    with open(filename, 'w') as output_file:
+        dict_writer = csv.DictWriter(output_file, keys)
+        dict_writer.writeheader()
+        dict_writer.writerows(list_of_dicts)
+
