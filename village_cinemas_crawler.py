@@ -4,6 +4,9 @@ import csv
 import time
 import pickle
 import os
+import datetime
+import gmail_auth
+import smtplib
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -18,7 +21,7 @@ def main():
     # crawl_main_page(main_page_url)
 
     main_page_url = 'https://www.villagecinemas.gr/WebTicketing/'
-    if os.path.isdir('village_cinemas_csvs/dataset.txt'):
+    if os.path.isfile('village_cinemas_csvs/dataset.txt'):
         with open('village_cinemas_csvs/dataset.txt', "rb") as fp:  # Unpickling
             screenings_data = pickle.load(fp)
     else:
@@ -232,7 +235,7 @@ def get_seats_html_with_selenium_crawler(main_page_url, movie_id, cinema_id, day
         # increase the ticket counter by one
         increase_ticket_count_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located(
-                (By.XPATH, "//div/input[@data-vc-ticketname='Eticket ' or @data-vc-ticketname='Special events Eticket']/../div[@class='inc button']"))
+                (By.XPATH, "//div/input[@data-vc-ticketname='Eticket ' or @data-vc-ticketname='Eticket' or @data-vc-ticketname='Special events Eticket']/../div[@class='inc button']"))
         )
         increase_ticket_count_element.click()
         print('click on ticket counter done')
@@ -247,7 +250,7 @@ def get_seats_html_with_selenium_crawler(main_page_url, movie_id, cinema_id, day
         # wait until this element is loaded, so that you can obtain the html script that contains the
         # seating arrangement
         seat_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[@class='choose-seat-block']"))
+            EC.presence_of_element_located((By.XPATH, "//div[@class='col-xs-3 comments comment-seat-left']"))
         )
         print('waiting on seat element to load done')
 
@@ -268,12 +271,11 @@ def get_available_and_reserved_seats(html_soup):
     # container with the available seats
     available_seats_container = html_soup.findAll('form', {'class': 'seats seat-available'})
     # container with the reserved seats
-    reserved_seats_container = html_soup.findAll('form', {'class': 'seats seat-not-available'})
+    reserved_seats_container = html_soup.findAll('span', {'class': 'seats seat-not-available'})
 
     # i increment the number of available seats by one to include the seat that is selected for me and belows to the
     # 'seats seat-choiced' class
     return len(available_seats_container)+1, len(reserved_seats_container)
-
 
 
 def get_seats_per_screening(main_page_url, screenings_data):
@@ -292,25 +294,34 @@ def get_seats_per_screening(main_page_url, screenings_data):
                 print(str(screenings_counter)+') Crawling for -> movie_id:' + movie_id + ' / ' + 'cinema_id:' + cinema_id + ' / ' + 'date_id:' + day_id + ' / ' + 'time_id:' + time_id)
                 start_time = time.time()
                 seats_found = False
-                while not seats_found:
+                false_connection_counter = 0
+                # if you are unable to get the seats html for 10 consecutive times send an email to notify the user
+                while (not seats_found) and (false_connection_counter < 10):
                     # use the selenium crawler to get the html for the seating arrangements
                     html_soup = get_seats_html_with_selenium_crawler(main_page_url, movie_id, cinema_id, day_id, time_id,
                                                          window_mode='visible')
                     print('completed in '+str(time.time() - start_time)+' secs')
                     if html_soup is None:
+                        false_connection_counter += 1
                         print('Something went wrong!!!!!!!!!!!')
                         print('Trying again !!!!!!!!!!!!!!!')
                     else:
                         seats_found = True
+                if false_connection_counter == 10:
+                    send_email('There is something wrong with the village_cinemas_crawler!!!', 'check your program')
 
                 # get the number of available and reserved seats for the specific screening
                 num_available, num_reserved = get_available_and_reserved_seats(html_soup)
+                print('available: '+str(num_available)+'    /    reserved: '+str(num_reserved))
                 d = {'date': day_id, 'starting_time': specific_screening_info['starting_time'], 'cinema_name': cinema_name,
                      'screening_hall': specific_screening_info['screening_hall'],
                      'movie_title': movie_title, 'free': num_available, 'sold': num_reserved}
                 data_list.append(d)
 
-    dict_to_csv(data_list, 'village_cinemas_csvs/dataset.csv')
+    current_date = datetime.date.today()
+    current_time = datetime.datetime.now().time()
+    file_name = str(current_date)+'_'+current_time.strftime("%H:%M:%S")
+    dict_to_csv(data_list, 'village_cinemas_csvs/attendance_per_screening_'+file_name+'.csv')
 
     return data_list
 
@@ -323,3 +334,32 @@ def dict_to_csv(list_of_dicts, filename):
         dict_writer.writeheader()
         dict_writer.writerows(list_of_dicts)
 
+
+# method that sends and email to the user. It is used when the program has difficulty with the selenium crawler
+def send_email(subject, body):
+    gmail_user = gmail_auth.gmail_username
+    gmail_password = gmail_auth.gmnail_password
+
+    sent_from = gmail_user
+    to = ['JimmyHliad@gmail.com']
+    subject = subject
+    body = body
+
+    email_text = """\
+    From: %s
+    To: %s
+    Subject: %s
+
+    %s
+    """ % (sent_from, ", ".join(to), subject, body)
+
+    try:
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.ehlo()
+        server.login(gmail_user, gmail_password)
+        server.sendmail(sent_from, to, email_text)
+        server.close()
+
+        print('Email sent!')
+    except:
+        print('Something went wrong with the email......')
