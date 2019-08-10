@@ -2,8 +2,10 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import datetime
+import os
 import csv
 import re
+import pandas as pd
 
 
 def main():
@@ -52,6 +54,17 @@ def dict_to_csv(list_of_dicts, filename):
         dict_writer = csv.DictWriter(output_file, keys)
         dict_writer.writeheader()
         dict_writer.writerows(list_of_dicts)
+
+
+def load_csv_to_dataframe(filename):
+    data = None
+    if os.path.isfile(filename):
+        data = pd.read_csv(filename)
+    else:
+        print("The file "+str(filename)+" doesn't exists...")
+
+    return data
+
 
 def get_movies_urls_from_main_page(main_page_url):
     r = requests.get(main_page_url)
