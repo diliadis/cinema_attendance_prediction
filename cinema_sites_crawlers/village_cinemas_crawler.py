@@ -21,12 +21,12 @@ def main():
     # crawl_main_page(main_page_url)
 
     main_page_url = 'https://www.villagecinemas.gr/WebTicketing/'
-    if os.path.isfile('village_cinemas_csvs/dataset.txt'):
-        with open('village_cinemas_csvs/dataset.txt', "rb") as fp:  # Unpickling
+    if os.path.isfile('../datasets/village_cinemas_csvs/dataset.txt'):
+        with open('../datasets/village_cinemas_csvs/dataset.txt', "rb") as fp:  # Unpickling
             screenings_data = pickle.load(fp)
     else:
         screenings_data = get_scan_of_screening_schedules(main_page_url)
-        with open('village_cinemas_csvs/dataset.txt', "wb") as fp:  # Pickling
+        with open('../datasets/village_cinemas_csvs/dataset.txt', "wb") as fp:  # Pickling
             pickle.dump(screenings_data, fp)
 
     data_list = get_seats_per_screening(main_page_url, screenings_data)
@@ -363,3 +363,6 @@ def send_email(subject, body):
         print('Email sent!')
     except:
         print('Something went wrong with the email......')
+
+
+main()

@@ -116,7 +116,7 @@ def crawl_view(url):
             data_list.append([date, starting_time, screening_hall, screening_mode.rstrip(), free_seats_counter, sold_seats_counter])
 
 
-    with open('cineplexx_csvs/'+output_file_name + ".csv", "w") as csv_File:
+    with open('../datasets/cineplexx_csvs/'+output_file_name + ".csv", "w") as csv_File:
         writer = csv.writer(csv_File)
         writer.writerows(data_list)
 

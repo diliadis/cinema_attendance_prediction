@@ -42,7 +42,7 @@ def main():
                     print('                         '+str(d))
                     data_list.append(d)
 
-    dict_to_csv(data_list, 'odeon_csvs/dataset.csv')
+    dict_to_csv(data_list, '../datasets/odeon_csvs/dataset.csv')
 
 
 def dict_to_csv(list_of_dicts, filename):
